@@ -1,6 +1,7 @@
 #include "stream_reassembler.hh"
 
 #include <cstdio>
+#include <utility>
 
 // Dummy implementation of a stream reassembler.
 
@@ -30,7 +31,7 @@ StreamReassembler::StreamReassembler(const size_t capacity)
 void StreamReassembler::store_unass_buffer(size_t index, const std::string &data) {
     size_t internal_index = 0;
     while (index < _first_unaccepted_index && internal_index < data.size()) {
-        _unass_window[index] = data.at(internal_index);
+        _unass_window.emplace(std::make_pair(index, data[internal_index]));
         index++;
         internal_index++;
     }
