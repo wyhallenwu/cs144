@@ -32,6 +32,8 @@ class StreamReassembler {
     //! and those that have not yet been reassembled.
     StreamReassembler(const size_t capacity);
 
+    size_t expected_index() const;
+
     //! \brief Receive a substring and write any newly contiguous bytes into the stream.
     //!
     //! The StreamReassembler will stay within the memory limits of the `capacity`.

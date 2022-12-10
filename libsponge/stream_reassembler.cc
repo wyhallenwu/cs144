@@ -37,6 +37,8 @@ void StreamReassembler::store_unass_buffer(size_t index, const std::string &data
     }
 }
 
+size_t StreamReassembler::expected_index() const { return _first_unassembled_index; }
+
 std::string StreamReassembler::combine_new_data(size_t index, const std::string &data) {
     // search in the window and form a continuous string with end_index < _first_unaccepted_index
     std::string combined_data =
