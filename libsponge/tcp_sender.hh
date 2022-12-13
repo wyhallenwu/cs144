@@ -6,10 +6,28 @@
 #include "tcp_segment.hh"
 #include "wrapping_integers.hh"
 
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <queue>
 
 //! \brief The "sender" part of a TCP implementation.
+
+class RetransTimer {
+  private:
+    size_t _elapsed_time{0};
+    bool _timer_running = false;
+
+  public:
+    size_t elapsed_time() const { return _elapsed_time; }
+    bool status() const { return _timer_running; }
+    void time_pass(const size_t ms) { _elapsed_time += ms; }
+    void set_timer(bool status) { _timer_running = status; }
+    void reset() {
+        _timer_running = true;
+        _elapsed_time = 0;
+    }
+};
 
 //! Accepts a ByteStream, divides it up into segments and sends the
 //! segments, keeps track of which segments are still in-flight,
@@ -31,6 +49,18 @@ class TCPSender {
 
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
+
+    // adding current rto time
+    size_t _rto;
+    RetransTimer _timer;
+    size_t _capacity;
+    bool _syn = false;
+    bool _fin = false;
+    size_t _time_elapsed{0};
+    uint16_t _receiver_window_size{1};
+    size_t _bytes_in_flight{0};
+    size_t _consecutive_retransmissions_count{0};
+    std::queue<TCPSegment> _segments_outstanding{};
 
   public:
     //! Initialize a TCPSender
@@ -87,6 +117,15 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
     //!@}
+
+    bool ack_valid(const WrappingInt32 ackno) const {
+        uint64_t abs_ackno = unwrap(ackno, _isn, _next_seqno);
+        if (_segments_outstanding.empty()) {
+            return abs_ackno <= _next_seqno;
+        }
+        return abs_ackno <= _next_seqno &&
+               abs_ackno >= unwrap(_segments_outstanding.front().header().seqno, _isn, _next_seqno);
+    }
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
