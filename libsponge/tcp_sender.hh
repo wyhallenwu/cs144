@@ -1,33 +1,169 @@
+// #ifndef SPONGE_LIBSPONGE_TCP_SENDER_HH
+// #define SPONGE_LIBSPONGE_TCP_SENDER_HH
+
+// #include "byte_stream.hh"
+// #include "tcp_config.hh"
+// #include "tcp_segment.hh"
+// #include "wrapping_integers.hh"
+
+// #include <cstdint>
+// #include <functional>
+// #include <optional>
+// #include <queue>
+
+// //! \brief The "sender" part of a TCP implementation.
+// //
+// //
+// // Timer wraps the retransmission control
+// enum class Status { ON, OFF };
+
+// class Timer {
+//   private:
+//     unsigned int _init_rto;
+//     size_t _rto;
+//     unsigned int _consecutive_retransmissions_count;
+//     size_t _time_elapsed;
+//     Status _status;
+
+//   public:
+//     Timer(const size_t rto = 0)
+//         : _init_rto(rto), _rto(rto), _consecutive_retransmissions_count(0), _time_elapsed(0), _status(Status::OFF) {}
+
+//     void start() { _status = Status::ON; }
+//     void close() {
+//         reset();
+//         _status = Status::OFF;
+//     }
+//     void reset() {
+//         _rto = _init_rto;
+//         _consecutive_retransmissions_count = 0;
+//         _time_elapsed = 0;
+//         _status = Status::ON;
+//     }
+
+//     void rto_squared() { _rto <<= 1; }
+//     void add_retrans_count() { _consecutive_retransmissions_count++; }
+//     void elapsed(const size_t ms) { _time_elapsed += ms; }
+//     void restart() {
+//         _time_elapsed = 0;
+//         _status = Status::ON;
+//     }
+//     void update_when_transmit() {
+//         rto_squared();
+//         add_retrans_count();
+//         restart();
+//     }
+
+//     bool on() const { return _status == Status::ON; }
+
+//     unsigned int get_retrans_count() const { return _consecutive_retransmissions_count; }
+
+//     bool check_retrans() const { return _status == Status::ON && _time_elapsed >= _rto; }
+// };
+
+// //! Accepts a ByteStream, divides it up into segments and sends the
+// //! segments, keeps track of which segments are still in-flight,
+// //! maintains the Retransmission Timer, and retransmits in-flight
+// //! segments if the retransmission timer expires.
+// class TCPSender {
+//   private:
+//     //! our initial sequence number, the number for our SYN.
+//     WrappingInt32 _isn;
+
+//     //! outbound queue of segments that the TCPSender wants sent
+//     std::queue<TCPSegment> _segments_out{};
+
+//     //! retransmission timer for the connection
+//     unsigned int _initial_retransmission_timeout;
+
+//     //! outgoing stream of bytes that have not yet been sent
+//     ByteStream _stream;
+
+//     //! the (absolute) sequence number for the next byte to be sent
+//     uint64_t _next_seqno{0};
+
+//     Timer _timer;
+//     bool _syn = false;
+//     bool _fin = false;
+//     uint16_t _receiver_window_size{0};
+//     size_t _bytes_in_flight{0};
+//     std::queue<TCPSegment> _segments_outstanding{};
+    
+//     // helper function
+//     bool _ack_valid(const WrappingInt32 ackno) const;
+//     void _queue_segment(const TCPSegment &seg);
+
+//   public:
+//     //! Initialize a TCPSender
+//     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
+//               const uint16_t retx_timeout = TCPConfig::TIMEOUT_DFLT,
+//               const std::optional<WrappingInt32> fixed_isn = {});
+
+//     //! \name "Input" interface for the writer
+//     //!@{
+//     ByteStream &stream_in() { return _stream; }
+//     const ByteStream &stream_in() const { return _stream; }
+//     //!@}
+
+//     //! \name Methods that can cause the TCPSender to send a segment
+//     //!@{
+
+//     //! \brief A new acknowledgment was received
+//     void ack_received(const WrappingInt32 ackno, const uint16_t window_size);
+
+//     //! \brief Generate an empty-payload segment (useful for creating empty ACK segments)
+//     void send_empty_segment();
+
+//     //! \brief create and send segments to fill as much of the window as possible
+//     void fill_window();
+
+//     //! \brief Notifies the TCPSender of the passage of time
+//     void tick(const size_t ms_since_last_tick);
+//     //!@}
+
+//     //! \name Accessors
+//     //!@{
+
+//     //! \brief How many sequence numbers are occupied by segments sent but not yet acknowledged?
+//     //! \note count is in "sequence space," i.e. SYN and FIN each count for one byte
+//     //! (see TCPSegment::length_in_sequence_space())
+//     size_t bytes_in_flight() const;
+
+//     //! \brief Number of consecutive retransmissions that have occurred in a row
+//     unsigned int consecutive_retransmissions() const;
+
+//     //! \brief TCPSegments that the TCPSender has enqueued for transmission.
+//     //! \note These must be dequeued and sent by the TCPConnection,
+//     //! which will need to fill in the fields that are set by the TCPReceiver
+//     //! (ackno and window size) before sending.
+//     std::queue<TCPSegment> &segments_out() { return _segments_out; }
+//     //!@}
+
+//     //! \name What is the next sequence number? (used for testing)
+//     //!@{
+
+//     //! \brief absolute seqno for the next byte to be sent
+//     uint64_t next_seqno_absolute() const { return _next_seqno; }
+
+//     //! \brief relative seqno for the next byte to be sent
+//     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
+//     //!@}
+// };
+
+// #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
 #ifndef SPONGE_LIBSPONGE_TCP_SENDER_HH
 #define SPONGE_LIBSPONGE_TCP_SENDER_HH
 
+#include "buffer.hh"
 #include "byte_stream.hh"
 #include "tcp_config.hh"
 #include "tcp_segment.hh"
 #include "wrapping_integers.hh"
 
-#include <cstdint>
 #include <functional>
-#include <optional>
 #include <queue>
 
 //! \brief The "sender" part of a TCP implementation.
-
-class RetransTimer {
-  private:
-    size_t _elapsed_time{0};
-    bool _timer_running = false;
-
-  public:
-    size_t elapsed_time() const { return _elapsed_time; }
-    bool status() const { return _timer_running; }
-    void time_pass(const size_t ms) { _elapsed_time += ms; }
-    void set_timer(bool status) { _timer_running = status; }
-    void reset() {
-        _timer_running = true;
-        _elapsed_time = 0;
-    }
-};
 
 //! Accepts a ByteStream, divides it up into segments and sends the
 //! segments, keeps track of which segments are still in-flight,
@@ -50,17 +186,21 @@ class TCPSender {
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
 
-    // adding current rto time
-    size_t _rto;
-    RetransTimer _timer;
-    size_t _capacity;
-    bool _syn = false;
-    bool _fin = false;
-    size_t _time_elapsed{0};
-    uint16_t _receiver_window_size{1};
-    size_t _bytes_in_flight{0};
-    size_t _consecutive_retransmissions_count{0};
+    bool _syn_sent = false;
+    bool _fin_sent = false;
+    uint64_t _bytes_in_flight = 0;
+    uint16_t _receiver_window_size = 0;
+    uint16_t _receiver_free_space = 0;
+    uint16_t _consecutive_retransmissions = 0;
+    unsigned int _rto = 0;
+    unsigned int _time_elapsed = 0;
+    bool _timer_running = false;
     std::queue<TCPSegment> _segments_outstanding{};
+    // Lab4 modify:
+    // bool _fill_window_called_by_ack_received{false};
+
+    bool _ack_valid(uint64_t abs_ackno);
+    void _send_segment(TCPSegment &seg);
 
   public:
     //! Initialize a TCPSender
@@ -117,15 +257,6 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
     //!@}
-
-    bool ack_valid(const WrappingInt32 ackno) const {
-        uint64_t abs_ackno = unwrap(ackno, _isn, _next_seqno);
-        if (_segments_outstanding.empty()) {
-            return abs_ackno <= _next_seqno;
-        }
-        return abs_ackno <= _next_seqno &&
-               abs_ackno >= unwrap(_segments_outstanding.front().header().seqno, _isn, _next_seqno);
-    }
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
